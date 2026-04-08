@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Cartellino - Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Apache ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <!-- PapaParse per il CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Font: Titillium Web -->
+    <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --brand-primary: #2C8180;
+            --brand-secondary: #79CAC7;
+            --brand-accent: #FCBE01;
+            --bg-main: #f4f7fa;
+        }
+
+        body {
+            font-family: 'Titillium Web', sans-serif;
+            background-color: var(--bg-main);
+            color: #333;
+        }
+        
+        .sidebar { 
+            background-color: white; 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-left: 1px solid #e5e7eb;
+        }
+
+        .primary-text { color: var(--brand-primary); }
+        .bg-primary { background-color: var(--brand-primary); }
+        .border-brand { border-color: var(--brand-primary); }
+        
+        /* Stili Tabella */
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th { 
+            background-color: var(--brand-primary); 
+            color: white;
+            text-align: left; 
+            padding: 12px 8px; 
+            position: sticky; 
+            top: 0; 
+            z-index: 10;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+        td { padding: 10px 8px; border-bottom: 1px solid #edf2f7; background-color: white; }
+        
+        .row-weekend { background-color: #fdf2f2 !important; color: #9b2c2c; }
+        .row-festivita { color: #c05621; font-weight: 800; }
+        .row-ferie { color: #276749; font-weight: 800; }
+        .row-malattia { color: #553c9a; font-weight: 800; }
+        .row-permesso { color: #2c5282; font-weight: 800; }
+
+        .metric-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 1.25rem;
+            background: white;
+            position: relative;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        
+        .metric-card:hover { 
+            border-color: var(--brand-secondary);
+            transform: translateY(-2px);
+        }
+
+        .is-fullscreen {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999 !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            padding: 2rem !important;
+            background: white !important;
+            overflow-y: auto;
+        }
+
+        .fullscreen-btn {
+            @apply p-1.5 rounded-md text-gray-400 hover:bg-gray-100 transition-colors;
+        }
+        .fullscreen-btn:hover { color: var(--brand-primary); }
+
+        .chart-container {
+            height: 350px !important;
+            width: 100%;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 10px; }
+
+        .sidebar-collapsed { width: 4rem !important; }
+        .sidebar-content-hidden { opacity: 0; pointer-events: none; width: 0; overflow: hidden; }
+        
+        /* Accent elements */
+        .accent-bar {
+            height: 4px;
+            width: 60px;
+            background-color: var(--brand-accent);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="app" class="flex flex-col md:flex-row min-h-screen" @keydown.esc="fullscreenMode = null">
+        
+        <!-- Main Content -->
+        <main class="flex-1 p-4 md:p-8 overflow-y-auto transition-all duration-300" :class="{'p-0': fullscreenMode}">
+            <header class="mb-10" v-show="!fullscreenMode">
+                <div class="flex items-center gap-4 mb-3">
+                    <img src="alessiodl/cartellino/cartellino-874c0d326051ecaf0382d1e5769b54206ef715ab/images/izs_marchio.png" alt="Logo" class="h-14 w-auto" onerror="this.style.display='none'">
+                    <div>
+                        <h2 class="text-2xl font-bold primary-text">My Cartellino</h2>
+                        <p class="text-xs text-gray-400 uppercase tracking-widest font-semibold">Dashboard Analisi Presenze</p>
+                    </div>
+                </div>
+                <div class="accent-bar"></div>
+            </header>
+
+            <div v-if="loading" class="flex flex-col items-center justify-center p-20 gap-4">
+                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-brand"></div>
+                <p class="text-sm font-semibold text-gray-400">Sincronizzazione dati...</p>
+            </div>
+
+            <div v-else class="space-y-6">
+                
+                <!-- KPI Row -->
+                <div v-show="!fullscreenMode" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="metric-card border-t-4 border-t-[#2C8180]">
+                        <div class="flex justify-between items-start">
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Ore Lavorate</h4>
+                            <i data-lucide="briefcase" class="w-4 h-4" style="color: #2C8180"></i>
+                        </div>
+                        <p class="text-2xl font-bold mt-2">{{ totalWorkedText }}</p>
+                    </div>
+                    
+                    <div class="metric-card border-t-4 border-t-[#79CAC7]">
+                        <div class="flex justify-between items-start">
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Media Saldo</h4>
+                            <i data-lucide="trending-up" class="w-4 h-4" style="color: #79CAC7"></i>
+                        </div>
+                        <p class="text-2xl font-bold mt-2" :class="avgBalanceRaw >= 0 ? 'text-emerald-600' : 'text-red-600'">
+                            {{ avgDailyBalanceText }}
+                        </p>
+                    </div>
+
+                    <div class="metric-card border-t-4 border-t-[#FCBE01]">
+                        <div class="flex justify-between items-start">
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Smart Working</h4>
+                            <i data-lucide="laptop" class="w-4 h-4" style="color: #FCBE01"></i>
+                        </div>
+                        <p class="text-2xl font-bold mt-2">{{ smartWorkingDays }} <span class="text-sm text-gray-400 font-normal">gg</span></p>
+                    </div>
+
+                    <div class="metric-card border-t-4 border-t-gray-400">
+                        <div class="flex justify-between items-start">
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Assenze</h4>
+                            <i data-lucide="calendar-x" class="w-4 h-4 text-gray-400"></i>
+                        </div>
+                        <p class="text-2xl font-bold mt-2">{{ leaveDays }} <span class="text-sm text-gray-400 font-normal">gg</span></p>
+                    </div>
+                </div>
+
+                <!-- Saldo Totale -->
+                <section class="metric-card border-l-8 border-brand" v-show="!fullscreenMode">
+                    <div class="flex items-center gap-2 mb-1">
+                        <i data-lucide="activity" class="w-4 h-4 text-gray-400"></i>
+                        <h3 class="text-gray-400 text-xs font-bold uppercase tracking-widest">Saldo Complessivo Periodo</h3>
+                    </div>
+                    <div class="text-3xl font-bold" :class="totalBalanceRaw >= 0 ? 'text-emerald-600' : 'text-red-600'">
+                        {{ totalBalanceText }}
+                    </div>
+                </section>
+
+                <!-- Tabella -->
+                <section :class="['metric-card overflow-hidden bg-white', {'is-fullscreen': fullscreenMode === 'table'}]" v-show="!fullscreenMode || fullscreenMode === 'table'">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="list" class="w-5 h-5 primary-text"></i>
+                            <h3 class="text-lg font-bold">Registro Giornaliero</h3>
+                        </div>
+                        <button @click="toggleFullscreen('table')" class="fullscreen-btn">
+                            <i :data-lucide="fullscreenMode === 'table' ? 'minimize-2' : 'maximize-2'"></i>
+                        </button>
+                    </div>
+                    <div 
+                        ref="tableWrapper"
+                        :class="[
+                            'overflow-auto border rounded border-gray-200 custom-scrollbar shadow-inner', 
+                            fullscreenMode === 'table' ? 'max-h-[85vh]' : 'max-h-[420px]'
+                        ]"
+                    >
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Giorno</th>
+                                    <th>Tipologia</th>
+                                    <th>Dettagli</th>
+                                    <th>Entrata 1</th>
+                                    <th>Uscita 1</th>
+                                    <th>Pausa</th>
+                                    <th>Dovuto</th>
+                                    <th>Lavorato</th>
+                                    <th>Saldo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in filteredData" :key="row.DATA" :class="getRowClass(row)">
+                                    <td class="font-semibold">{{ row.DATA }}</td>
+                                    <td>{{ row.GIORNO }}</td>
+                                    <td>
+                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide" 
+                                              :class="row.TIPOLOGIA === 'SMART WORKING' ? 'bg-[#e6fffa] text-[#2c7a7b]' : 'bg-gray-100 text-gray-600'">
+                                            {{ row.TIPOLOGIA }}
+                                        </span>
+                                    </td>
+                                    <td class="text-gray-500 italic">{{ row.DETTAGLI || '-' }}</td>
+                                    <td>{{ row.ENTRATA_1 || '-' }}</td>
+                                    <td>{{ row.USCITA_1 || '-' }}</td>
+                                    <td>{{ row.PAUSA || '-' }}</td>
+                                    <td>{{ formatDuration(row.DOVUTO_SEC) }}</td>
+                                    <td>{{ formatDuration(row.LAVORATO_SEC) }}</td>
+                                    <td class="font-bold">{{ formatDuration(row.SALDO_SEC) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Charts -->
+                <div :class="fullscreenMode ? 'block' : 'grid grid-cols-1 lg:grid-cols-2 gap-6'">
+                    <!-- Weekly -->
+                    <div :class="['metric-card', {'is-fullscreen': fullscreenMode === 'weekly'}]" 
+                         v-show="!fullscreenMode || fullscreenMode === 'weekly'">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="bar-chart" class="w-5 h-5 primary-text"></i>
+                                <h3 class="text-lg font-bold">Trend Settimanale</h3>
+                            </div>
+                            <button @click="toggleFullscreen('weekly')" class="fullscreen-btn">
+                                <i :data-lucide="fullscreenMode === 'weekly' ? 'minimize-2' : 'maximize-2'"></i>
+                            </button>
+                        </div>
+                        <div id="weekly-chart" class="chart-container"></div>
+                    </div>
+
+                    <!-- Monthly -->
+                    <div :class="['metric-card', {'is-fullscreen': fullscreenMode === 'monthly'}]"
+                         v-show="!fullscreenMode || fullscreenMode === 'monthly'">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="bar-chart-big" class="w-5 h-5 primary-text"></i>
+                                <h3 class="text-lg font-bold">Riepilogo Mensile</h3>
+                            </div>
+                            <button @click="toggleFullscreen('monthly')" class="fullscreen-btn">
+                                <i :data-lucide="fullscreenMode === 'monthly' ? 'minimize-2' : 'maximize-2'"></i>
+                            </button>
+                        </div>
+                        <div id="monthly-chart" class="chart-container"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Sidebar Right -->
+        <aside 
+            :class="['sidebar h-screen sticky top-0 flex flex-col shadow-lg', sidebarCollapsed ? 'sidebar-collapsed' : 'w-72']"
+            v-show="!fullscreenMode"
+        >
+            <div class="flex items-center p-5 border-b border-gray-100" :class="sidebarCollapsed ? 'justify-center' : 'justify-between'">
+                <button @click="toggleSidebar" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <i :data-lucide="sidebarCollapsed ? 'panel-right-open' : 'panel-right-close'" class="w-5 h-5 primary-text"></i>
+                </button>
+                <h3 v-show="!sidebarCollapsed" class="text-sm font-bold primary-text uppercase tracking-widest">Filtri</h3>
+            </div>
+
+            <div :class="['flex-1 p-6 space-y-8 transition-opacity duration-200', sidebarCollapsed ? 'sidebar-content-hidden' : 'opacity-100']">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i data-lucide="filter" class="w-4 h-4 primary-text"></i>
+                        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Periodo</span>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-400 mb-1">Inizio</label>
+                        <input type="date" v-model="filters.dateFrom" class="w-full p-2.5 border border-gray-200 rounded text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-400 mb-1">Fine</label>
+                        <input type="date" v-model="filters.dateTo" class="w-full p-2.5 border border-gray-200 rounded text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none transition-all">
+                    </div>
+                </div>
+
+                <div class="p-4 rounded-md border" style="background-color: #f0f9f9; border-color: #79CAC7">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i data-lucide="info" class="w-4 h-4" style="color: #2C8180"></i>
+                        <span class="text-xs font-bold" style="color: #2C8180">Info</span>
+                    </div>
+                    <p class="text-[11px] leading-relaxed opacity-80" style="color: #2C8180">
+                        Tabella completa di weekend. Grafici e medie calcolati sulla settimana lavorativa (Lun-Ven).
+                    </p>
+                </div>
+            </div>
+
+            <div v-if="sidebarCollapsed" class="flex flex-col items-center gap-8 pb-10">
+                <i data-lucide="calendar" class="w-5 h-5 text-gray-300"></i>
+                <i data-lucide="settings" class="w-5 h-5 text-gray-300"></i>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                const rawData = ref([]);
+                const loading = ref(true);
+                const fullscreenMode = ref(null);
+                const sidebarCollapsed = ref(false);
+                const tableWrapper = ref(null);
+                
+                let weeklyChart = null;
+                let monthlyChart = null;
+                
+                const filters = ref({
+                    dateFrom: '2026-01-01',
+                    dateTo: new Date().toISOString().split('T')[0]
+                });
+
+                const CSV_URL = "https://docs.google.com/spreadsheets/d/15HoJRe3AGq3VAgXN8gcO3cF0vfezPR6t0LvTc2R4WFo/export?format=csv&gid=896724717";
+
+                const parseTimeToSeconds = (str) => {
+                    if (!str || str === '-' || str === 'nan') return 0;
+                    if (str.includes(':')) {
+                        const parts = str.split(':');
+                        const h = parseInt(parts[0]) || 0;
+                        const m = parseInt(parts[1]) || 0;
+                        const s = parseInt(parts[2]) || 0;
+                        return (h * 3600) + (m * 60) + s;
+                    }
+                    const h = parseFloat(str.replace(',', '.'));
+                    return isNaN(h) ? 0 : h * 3600;
+                };
+
+                const formatDuration = (totalSeconds) => {
+                    if (totalSeconds === null) return '-';
+                    const sign = totalSeconds < 0 ? '-' : '';
+                    const absSeconds = Math.abs(totalSeconds);
+                    const h = Math.floor(absSeconds / 3600);
+                    const m = Math.floor((absSeconds % 3600) / 60);
+                    return `${sign}${h}:${m.toString().padStart(2, '0')}`;
+                };
+
+                const scrollToLastDays = () => {
+                    nextTick(() => {
+                        if (tableWrapper.value && !fullscreenMode.value) {
+                            tableWrapper.value.scrollTop = tableWrapper.value.scrollHeight;
+                        }
+                    });
+                };
+
+                const fetchData = async () => {
+                    loading.value = true;
+                    Papa.parse(CSV_URL, {
+                        download: true,
+                        header: true,
+                        complete: (results) => {
+                            rawData.value = results.data.filter(r => r.DATA);
+                            loading.value = false;
+                            updateIcons();
+                            scrollToLastDays();
+                        }
+                    });
+                };
+
+                const updateIcons = () => {
+                    setTimeout(() => lucide.createIcons(), 50);
+                };
+
+                const toggleSidebar = () => {
+                    sidebarCollapsed.value = !sidebarCollapsed.value;
+                    updateIcons();
+                    setTimeout(() => {
+                        weeklyChart?.resize();
+                        monthlyChart?.resize();
+                    }, 350);
+                };
+
+                const toggleFullscreen = (mode) => {
+                    fullscreenMode.value = fullscreenMode.value === mode ? null : mode;
+                    if (!fullscreenMode.value) scrollToLastDays();
+                    updateIcons();
+                    setTimeout(() => {
+                        weeklyChart?.resize();
+                        monthlyChart?.resize();
+                    }, 100);
+                };
+
+                const processedData = computed(() => {
+                    return rawData.value.map(row => {
+                        const dateObj = new Date(row.DATA.split('/').reverse().join('-'));
+                        const oreRichiesteSec = parseTimeToSeconds(row["ORE RICHIESTE"]);
+                        
+                        let dovutoSec = 0;
+                        const standardTypes = ['SMART WORKING', 'PESCARA', 'TERAMO', 'MISSIONE'];
+                        const partialTypes = ['PERMESSO', 'VISITA MEDICA', 'RECUPERO ORE RICERCATORI'];
+                        
+                        if (standardTypes.includes(row.TIPOLOGIA)) {
+                            dovutoSec = 25920;
+                        } else if (partialTypes.includes(row.TIPOLOGIA)) {
+                            dovutoSec = 25920 - oreRichiesteSec;
+                        }
+
+                        let lavoratoSec = 0;
+                        if (row.TIPOLOGIA === 'SMART WORKING') {
+                            lavoratoSec = 25920;
+                        } else if (['PESCARA', 'TERAMO', 'MISSIONE', 'EVENTO'].includes(row.TIPOLOGIA)) {
+                            if (row.ENTRATA_1 && row.USCITA_1) {
+                                const e1 = parseTimeToSeconds(row.ENTRATA_1);
+                                const u1 = parseTimeToSeconds(row.USCITA_1);
+                                lavoratoSec += (u1 - e1);
+                                if (row.ENTRATA_2 && row.USCITA_2) {
+                                    const e2 = parseTimeToSeconds(row.ENTRATA_2);
+                                    const u2 = parseTimeToSeconds(row.USCITA_2);
+                                    lavoratoSec += (u2 - e2);
+                                }
+                                if (row.PAUSA) lavoratoSec -= parseTimeToSeconds(row.PAUSA);
+                            }
+                        }
+
+                        return {
+                            ...row,
+                            DATA_OBJ: dateObj,
+                            DOVUTO_SEC: dovutoSec,
+                            LAVORATO_SEC: lavoratoSec,
+                            SALDO_SEC: lavoratoSec - dovutoSec
+                        };
+                    });
+                });
+
+                const filteredData = computed(() => {
+                    const from = new Date(filters.value.dateFrom);
+                    const to = new Date(filters.value.dateTo);
+                    return processedData.value.filter(d => d.DATA_OBJ >= from && d.DATA_OBJ <= to);
+                });
+
+                const workWeekData = computed(() => {
+                    return filteredData.value.filter(d => !['SAB', 'DOM'].includes(d.GIORNO));
+                });
+
+                // KPIs
+                const totalBalanceRaw = computed(() => workWeekData.value.reduce((acc, curr) => acc + curr.SALDO_SEC, 0));
+                const totalBalanceText = computed(() => {
+                    const formatted = formatDuration(totalBalanceRaw.value);
+                    const parts = formatted.split(':');
+                    return `${parts[0]} ore e ${parts[1]} minuti`;
+                });
+
+                const totalWorkedText = computed(() => formatDuration(workWeekData.value.reduce((acc, curr) => acc + curr.LAVORATO_SEC, 0)));
+                const avgBalanceRaw = computed(() => workWeekData.value.length ? totalBalanceRaw.value / workWeekData.value.length : 0);
+                const avgDailyBalanceText = computed(() => formatDuration(Math.round(avgBalanceRaw.value)));
+                const smartWorkingDays = computed(() => workWeekData.value.filter(d => d.TIPOLOGIA === 'SMART WORKING').length);
+                const leaveDays = computed(() => workWeekData.value.filter(d => ['FERIE', 'MALATTIA', 'PERMESSO', 'VISITA MEDICA'].includes(d.TIPOLOGIA)).length);
+
+                const getRowClass = (row) => {
+                    if (['SAB', 'DOM'].includes(row.GIORNO)) return 'row-weekend';
+                    if (row.TIPOLOGIA === 'FESTIVITA') return 'row-festivita';
+                    if (row.TIPOLOGIA === 'FERIE') return 'row-ferie';
+                    if (row.TIPOLOGIA === 'MALATTIA') return 'row-malattia';
+                    if (['PERMESSO', 'VISITA MEDICA'].includes(row.TIPOLOGIA)) return 'row-permesso';
+                    return '';
+                };
+
+                const getWorkWeekRange = (anyDateInWeek) => {
+                    const d = new Date(anyDateInWeek);
+                    const day = d.getDay();
+                    const diffToMon = d.getDate() - day + (day === 0 ? -6 : 1);
+                    const monday = new Date(new Date(d).setDate(diffToMon));
+                    const friday = new Date(new Date(monday).setDate(monday.getDate() + 4));
+                    return { monday, friday };
+                };
+
+                const formatRangeDate = (date) => {
+                    const options = { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' };
+                    return date.toLocaleDateString('it-IT', options).replace(/\./g, '');
+                };
+
+                const renderCharts = () => {
+                    if (workWeekData.value.length === 0) return;
+
+                    // Settimanale
+                    const weeks = {};
+                    workWeekData.value.forEach(d => {
+                        const date = d.DATA_OBJ;
+                        const oneJan = new Date(date.getFullYear(), 0, 1);
+                        const weekNum = Math.ceil((((date - oneJan) / 86400000) + oneJan.getDay() + 1) / 7);
+                        if (!weeks[weekNum]) {
+                            const { monday, friday } = getWorkWeekRange(date);
+                            weeks[weekNum] = { saldo: 0, rangeText: `${formatRangeDate(monday)} - ${formatRangeDate(friday)}` };
+                        }
+                        weeks[weekNum].saldo += d.SALDO_SEC;
+                    });
+
+                    if (!weeklyChart) weeklyChart = echarts.init(document.getElementById('weekly-chart'));
+                    weeklyChart.setOption({
+                        tooltip: { 
+                            trigger: 'axis', 
+                            backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                            borderColor: '#2C8180',
+                            borderWidth: 1,
+                            textStyle: { color: '#333', fontSize: 11 },
+                            formatter: (params) => {
+                                const weekNum = params[0].name;
+                                const data = weeks[weekNum];
+                                return `<div class="font-bold primary-text mb-1 uppercase tracking-tighter" style="font-size:10px">${data.rangeText}</div>
+                                        <div class="mb-1">Settimana ${weekNum}</div>
+                                        <div class="font-bold">Saldo: ${formatDuration(Math.round(params[0].value * 3600))}</div>`;
+                            } 
+                        },
+                        grid: { top: 40, bottom: 40, left: 40, right: 20, containLabel: true },
+                        xAxis: { type: 'category', data: Object.keys(weeks), axisLine: { lineStyle: { color: '#e2e8f0' } } },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
+                        series: [{
+                            data: Object.values(weeks).map(w => w.saldo / 3600),
+                            type: 'bar',
+                            barMaxWidth: 35,
+                            label: { show: false }, // Rimosse le label sulle barre
+                            itemStyle: { 
+                                borderRadius: [3, 3, 0, 0],
+                                color: (p) => p.value >= 0 ? '#2C8180' : '#d53f8c' 
+                            }
+                        }]
+                    });
+
+                    // Mensile
+                    const months = {};
+                    workWeekData.value.forEach(d => {
+                        const m = d.DATA_OBJ.toLocaleString('it-IT', { month: 'short', year: 'numeric' });
+                        months[m] = (months[m] || 0) + d.SALDO_SEC;
+                    });
+
+                    if (!monthlyChart) monthlyChart = echarts.init(document.getElementById('monthly-chart'));
+                    monthlyChart.setOption({
+                        tooltip: { 
+                            trigger: 'axis',
+                            backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                            borderColor: '#79CAC7',
+                            borderWidth: 1,
+                            textStyle: { color: '#333', fontSize: 11 },
+                            formatter: (params) => {
+                                const val = params[0].value;
+                                const formatted = formatDuration(Math.round(val * 3600));
+                                return `<div class="font-bold primary-text mb-1 uppercase tracking-tighter" style="font-size:10px">${params[0].name}</div>
+                                        <div class="font-bold">Saldo: ${formatted}</div>`;
+                            }
+                        },
+                        grid: { top: 40, bottom: 40, left: 40, right: 20, containLabel: true },
+                        xAxis: { type: 'category', data: Object.keys(months), axisLine: { lineStyle: { color: '#e2e8f0' } } },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
+                        series: [{
+                            data: Object.values(months).map(s => s / 3600),
+                            type: 'bar',
+                            barMaxWidth: 50,
+                            label: { show: true, position: 'top', formatter: (p) => formatDuration(Math.round(p.value * 3600)), fontSize: 9, fontWeight: 'bold' },
+                            itemStyle: { 
+                                borderRadius: [3, 3, 0, 0],
+                                color: (p) => p.value >= 0 ? '#79CAC7' : '#d53f8c' 
+                            }
+                        }]
+                    });
+                };
+
+                onMounted(() => {
+                    fetchData();
+                    window.addEventListener('keydown', (e) => e.key === 'Escape' && fullscreenMode.value ? toggleFullscreen(fullscreenMode.value) : null);
+                    window.addEventListener('resize', () => { weeklyChart?.resize(); monthlyChart?.resize(); });
+                });
+
+                watch(filteredData, () => {
+                    setTimeout(renderCharts, 100);
+                    scrollToLastDays();
+                });
+
+                return {
+                    loading, filters, filteredData, totalBalanceText, totalBalanceRaw,
+                    totalWorkedText, avgDailyBalanceText, avgBalanceRaw, smartWorkingDays, leaveDays,
+                    formatDuration, getRowClass,
+                    fullscreenMode, toggleFullscreen, tableWrapper, sidebarCollapsed, toggleSidebar
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
