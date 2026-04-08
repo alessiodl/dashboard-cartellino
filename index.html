@@ -215,8 +215,9 @@
                                     <th>Giorno</th>
                                     <th>Tipologia</th>
                                     <th>Dettagli</th>
-                                    <th>Entrata 1</th>
-                                    <th>Uscita 1</th>
+                                    <th>Ore Richieste</th>
+                                    <th>Entrata</th>
+                                    <th>Uscita</th>
                                     <th>Pausa</th>
                                     <th>Dovuto</th>
                                     <th>Lavorato</th>
@@ -234,6 +235,7 @@
                                         </span>
                                     </td>
                                     <td class="text-gray-500 italic">{{ row.DETTAGLI || '-' }}</td>
+                                    <td class="text-center font-medium">{{ row["ORE RICHIESTE"] || '-' }}</td>
                                     <td>{{ row.ENTRATA_1 || '-' }}</td>
                                     <td>{{ row.USCITA_1 || '-' }}</td>
                                     <td>{{ row.PAUSA || '-' }}</td>
@@ -315,7 +317,7 @@
                         <span class="text-xs font-bold" style="color: #2C8180">Info</span>
                     </div>
                     <p class="text-[11px] leading-relaxed opacity-80" style="color: #2C8180">
-                        Tabella completa di weekend. Grafici e medie calcolati sulla settimana lavorativa (Lun-Ven).
+                        Dati puramente dimostrativi.
                     </p>
                 </div>
             </div>
@@ -476,8 +478,10 @@
                 });
 
                 const totalWorkedText = computed(() => formatDuration(workWeekData.value.reduce((acc, curr) => acc + curr.LAVORATO_SEC, 0)));
+                
                 const avgBalanceRaw = computed(() => workWeekData.value.length ? totalBalanceRaw.value / workWeekData.value.length : 0);
                 const avgDailyBalanceText = computed(() => formatDuration(Math.round(avgBalanceRaw.value)));
+                
                 const smartWorkingDays = computed(() => workWeekData.value.filter(d => d.TIPOLOGIA === 'SMART WORKING').length);
                 const leaveDays = computed(() => workWeekData.value.filter(d => ['FERIE', 'MALATTIA', 'PERMESSO', 'VISITA MEDICA'].includes(d.TIPOLOGIA)).length);
 
@@ -520,36 +524,39 @@
                         weeks[weekNum].saldo += d.SALDO_SEC;
                     });
 
-                    if (!weeklyChart) weeklyChart = echarts.init(document.getElementById('weekly-chart'));
-                    weeklyChart.setOption({
-                        tooltip: { 
-                            trigger: 'axis', 
-                            backgroundColor: 'rgba(255, 255, 255, 0.98)',
-                            borderColor: '#2C8180',
-                            borderWidth: 1,
-                            textStyle: { color: '#333', fontSize: 11 },
-                            formatter: (params) => {
-                                const weekNum = params[0].name;
-                                const data = weeks[weekNum];
-                                return `<div class="font-bold primary-text mb-1 uppercase tracking-tighter" style="font-size:10px">${data.rangeText}</div>
-                                        <div class="mb-1">Settimana ${weekNum}</div>
-                                        <div class="font-bold">Saldo: ${formatDuration(Math.round(params[0].value * 3600))}</div>`;
-                            } 
-                        },
-                        grid: { top: 40, bottom: 40, left: 40, right: 20, containLabel: true },
-                        xAxis: { type: 'category', data: Object.keys(weeks), axisLine: { lineStyle: { color: '#e2e8f0' } } },
-                        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
-                        series: [{
-                            data: Object.values(weeks).map(w => w.saldo / 3600),
-                            type: 'bar',
-                            barMaxWidth: 35,
-                            label: { show: false }, // Rimosse le label sulle barre
-                            itemStyle: { 
-                                borderRadius: [3, 3, 0, 0],
-                                color: (p) => p.value >= 0 ? '#2C8180' : '#d53f8c' 
-                            }
-                        }]
-                    });
+                    const weeklyEl = document.getElementById('weekly-chart');
+                    if (weeklyEl) {
+                        if (!weeklyChart) weeklyChart = echarts.init(weeklyEl);
+                        weeklyChart.setOption({
+                            tooltip: { 
+                                trigger: 'axis', 
+                                backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                                borderColor: '#2C8180',
+                                borderWidth: 1,
+                                textStyle: { color: '#333', fontSize: 11 },
+                                formatter: (params) => {
+                                    const weekNum = params[0].name;
+                                    const data = weeks[weekNum];
+                                    return `<div class="font-bold primary-text mb-1 uppercase tracking-tighter" style="font-size:10px">${data.rangeText}</div>
+                                            <div class="mb-1">Settimana ${weekNum}</div>
+                                            <div class="font-bold">Saldo: ${formatDuration(Math.round(params[0].value * 3600))}</div>`;
+                                } 
+                            },
+                            grid: { top: 40, bottom: 40, left: 40, right: 20, containLabel: true },
+                            xAxis: { type: 'category', data: Object.keys(weeks), axisLine: { lineStyle: { color: '#e2e8f0' } } },
+                            yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
+                            series: [{
+                                data: Object.values(weeks).map(w => w.saldo / 3600),
+                                type: 'bar',
+                                barMaxWidth: 35,
+                                label: { show: false }, 
+                                itemStyle: { 
+                                    borderRadius: [3, 3, 0, 0],
+                                    color: (p) => p.value >= 0 ? '#2C8180' : '#d53f8c' 
+                                }
+                            }]
+                        });
+                    }
 
                     // Mensile
                     const months = {};
@@ -558,35 +565,44 @@
                         months[m] = (months[m] || 0) + d.SALDO_SEC;
                     });
 
-                    if (!monthlyChart) monthlyChart = echarts.init(document.getElementById('monthly-chart'));
-                    monthlyChart.setOption({
-                        tooltip: { 
-                            trigger: 'axis',
-                            backgroundColor: 'rgba(255, 255, 255, 0.98)',
-                            borderColor: '#79CAC7',
-                            borderWidth: 1,
-                            textStyle: { color: '#333', fontSize: 11 },
-                            formatter: (params) => {
-                                const val = params[0].value;
-                                const formatted = formatDuration(Math.round(val * 3600));
-                                return `<div class="font-bold primary-text mb-1 uppercase tracking-tighter" style="font-size:10px">${params[0].name}</div>
-                                        <div class="font-bold">Saldo: ${formatted}</div>`;
-                            }
-                        },
-                        grid: { top: 40, bottom: 40, left: 40, right: 20, containLabel: true },
-                        xAxis: { type: 'category', data: Object.keys(months), axisLine: { lineStyle: { color: '#e2e8f0' } } },
-                        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
-                        series: [{
-                            data: Object.values(months).map(s => s / 3600),
-                            type: 'bar',
-                            barMaxWidth: 50,
-                            label: { show: true, position: 'top', formatter: (p) => formatDuration(Math.round(p.value * 3600)), fontSize: 9, fontWeight: 'bold' },
-                            itemStyle: { 
-                                borderRadius: [3, 3, 0, 0],
-                                color: (p) => p.value >= 0 ? '#79CAC7' : '#d53f8c' 
-                            }
-                        }]
-                    });
+                    const monthlyEl = document.getElementById('monthly-chart');
+                    if (monthlyEl) {
+                        if (!monthlyChart) monthlyChart = echarts.init(monthlyEl);
+                        monthlyChart.setOption({
+                            tooltip: { 
+                                trigger: 'axis',
+                                backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                                borderColor: '#79CAC7',
+                                borderWidth: 1,
+                                textStyle: { color: '#333', fontSize: 11 },
+                                formatter: (params) => {
+                                    const val = params[0].value;
+                                    const formatted = formatDuration(Math.round(val * 3600));
+                                    return `<div class="font-bold primary-text mb-1 uppercase tracking-tighter" style="font-size:10px">${params[0].name}</div>
+                                            <div class="font-bold">Saldo: ${formatted}</div>`;
+                                }
+                            },
+                            grid: { top: 40, bottom: 40, left: 40, right: 20, containLabel: true },
+                            xAxis: { type: 'category', data: Object.keys(months), axisLine: { lineStyle: { color: '#e2e8f0' } } },
+                            yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
+                            series: [{
+                                data: Object.values(months).map(s => s / 3600),
+                                type: 'bar',
+                                barMaxWidth: 50,
+                                label: { 
+                                    show: true, 
+                                    position: 'top', 
+                                    formatter: (p) => formatDuration(Math.round(p.value * 3600)), 
+                                    fontSize: 9, 
+                                    fontWeight: 'bold' 
+                                },
+                                itemStyle: { 
+                                    borderRadius: [3, 3, 0, 0],
+                                    color: (p) => p.value >= 0 ? '#79CAC7' : '#d53f8c' 
+                                }
+                            }]
+                        });
+                    }
                 };
 
                 onMounted(() => {
@@ -610,4 +626,5 @@
         }).mount('#app');
     </script>
 </body>
+</html>
 </html>
